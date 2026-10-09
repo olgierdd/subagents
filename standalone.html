@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flat agent vs Manager + Subagents · D3 (standalone)</title>
+<style>
+:root {
+  --bg: #0b1020; --card: #121a2e; --card2: #17213a; --line: #24304d;
+  --txt: #e6ebf5; --mut: #8b97b0; --flat: #ef5f67; --sub: #22b8cf; --mgr: #7c5cff;
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(1200px 600px at 10% -10%, #1b2550 0%, var(--bg) 60%); color: var(--txt); min-height: 100vh; }
+.app { max-width: 1440px; margin: 0 auto; padding: 28px 24px 40px; }
+header h1 { font-size: 30px; margin: 6px 0 8px; letter-spacing: -0.02em; }
+.vs { color: var(--mut); font-weight: 400; font-size: 22px; padding: 0 6px; }
+.eyebrow { color: var(--sub); font-size: 12px; letter-spacing: .14em; font-weight: 600; }
+.lede { color: #b8c2d8; max-width: 980px; line-height: 1.5; margin: 0 0 18px; }
+
+.controls { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; align-items: center;
+  background: rgba(11,16,32,.85); backdrop-filter: blur(8px); padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 18px; }
+button { background: var(--card2); color: var(--txt); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; font: inherit; font-size: 14px; cursor: pointer; }
+button:hover { border-color: #3b4a72; }
+button.primary { background: linear-gradient(90deg, var(--mgr), var(--sub)); border: none; font-weight: 600; }
+.progress { flex: 1; height: 6px; background: var(--card2); border-radius: 3px; overflow: hidden; }
+.progress > div { height: 100%; background: linear-gradient(90deg, var(--flat), var(--sub)); }
+.phase { color: var(--mut); font-size: 13px; font-family: ui-monospace, Consolas, monospace; min-width: 90px; text-align: right; }
+
+.race, .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+@media (max-width: 1100px) { .race, .grid2 { grid-template-columns: 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+.card.flat { border-top: 3px solid var(--flat); }
+.card.sub { border-top: 3px solid var(--sub); }
+.card.flat .viz, .card.sub .viz { max-width: 85%; margin-left: auto; margin-right: auto; }
+.card-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.card h2 { font-size: 17px; margin: 0; display: flex; align-items: center; gap: 8px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.chip { font-size: 11px; color: var(--mut); border: 1px solid var(--line); border-radius: 20px; padding: 3px 9px; font-family: ui-monospace, Consolas, monospace; }
+
+.viz { width: 100%; height: auto; display: block; overflow: visible; }
+.viz text { fill: #c9d3e8; font-size: 11px; }
+.viz .lbl-h { font-size: 12px; font-weight: 600; fill: #e6ebf5; }
+.viz .lbl-s { font-size: 10.5px; fill: var(--mut); }
+.viz .axis text { fill: var(--mut); font-size: 10px; }
+.viz .axis path, .viz .axis line { stroke: #34405e; }
+
+.tree { background: radial-gradient(circle at center, #151f38 0%, transparent 70%); border-radius: 10px; aspect-ratio: 460 / 420; }
+.tree .links line { stroke: #6b7a99; stroke-width: 1.2; }
+.tree circle { cursor: grab; }
+.tree .nlabel { font-size: 11px; font-weight: 700; paint-order: stroke; stroke: #0b1020; stroke-width: 3px; pointer-events: none; }
+.tree .nl-agent, .tree .nl-manager { font-size: 13px; }
+.tree .nl-subagent { font-size: 9px; fill: var(--sub); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--mut); font-size: 12px; margin: -6px 0 18px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.legend .hint { margin-left: auto; font-style: italic; }
+
+.cursor { stroke: #fff; stroke-opacity: .3; stroke-dasharray: 3 3; }
+.tag text { font-size: 11px; font-weight: 700; paint-order: stroke; stroke: #0b1020; stroke-width: 3px; }
+.btrack { fill: var(--card2); }
+.blabel { font-size: 12px !important; }
+.bval { font-weight: 700; font-size: 12px !important; fill: #fff !important; font-family: ui-monospace, Consolas, monospace; }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+.stat { background: var(--card2); border-radius: 8px; padding: 8px 10px; }
+.stat-v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-l { font-size: 11px; color: var(--mut); }
+
+.ledger { width: 100%; border-collapse: collapse; margin: 0 0 16px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.ledger th, .ledger td { text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.ledger th:first-child, .ledger td:first-child { text-align: left; }
+.ledger th { color: var(--mut); font-weight: 500; }
+.kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.kpi { background: var(--card2); border-radius: 10px; padding: 14px; transition: transform .5s, box-shadow .5s; }
+.kpi b { display: block; font-size: 30px; background: linear-gradient(90deg, var(--mgr), var(--sub)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.kpi span { color: var(--mut); font-size: 12.5px; }
+.summary.lit .kpi { transform: translateY(-3px); box-shadow: 0 0 0 1px var(--sub), 0 10px 30px rgba(34,184,207,.15); }
+.note { color: var(--mut); font-size: 12.5px; line-height: 1.5; margin: 14px 0 0; }
+code { background: var(--card2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.29.0/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+// ===== src/data.js =====
+// ---------------------------------------------------------------------------
+// Run data (verbatim from single-agent-run.txt and subagent-run.txt)
+// ---------------------------------------------------------------------------
+const FILES = [
+  { name: "Asha_Kulkarni_Resume (2).txt",       chars: 231, flat: "work",     sub: "work" },
+  { name: "Asha_Kulkarni_Resume.txt",           chars: 231, flat: "work",     sub: "work" },
+  { name: "electricity_bill_august.txt",        chars: 240, flat: "finance",  sub: "finance" },
+  { name: "electricity_bill_july.txt",          chars: 238, flat: "finance",  sub: "finance" },
+  { name: "form16_fy2025_26.txt",               chars: 211, flat: "finance",  sub: "finance" },
+  { name: "grocery_list.txt",                   chars: 79,  flat: "personal", sub: "personal" },
+  { name: "insurance_policy_health.txt",        chars: 222, flat: "finance",  sub: "finance" },
+  { name: "meeting_notes_ruteway_sprint12.txt", chars: 351, flat: "work",     sub: "work" },
+  { name: "rent_receipt_july.txt",              chars: 198, flat: "finance",  sub: "personal" },
+  { name: "screenshot_error_2026_08_11.txt",    chars: 199, flat: "work",     sub: "work" },
+  { name: "sip_statement_q2.txt",               chars: 194, flat: "finance",  sub: "finance" },
+  { name: "trek_photos_note.txt",               chars: 167, flat: "personal", sub: "personal" },
+  { name: "untitled_1.txt",                     chars: 110, flat: "personal", sub: "personal" },
+  { name: "wedding_invite_shreya.txt",          chars: 183, flat: "personal", sub: "personal" },
+];
+
+// Final ledgers exactly as printed by the two runs.
+const RUN = {
+  flat:      { turns: 4,  tools: 29, in: 11928, out: 3256 },
+  manager:   { turns: 0,  tools: 14, in: 86,    out: 0 },
+  subagents: { turns: 14, tools: 0,  in: 1976,  out: 56 },
+};
+const MODELS = { flat: "claude-sonnet-5", manager: "claude-sonnet-5", subagent: "claude-haiku-4-5-20251001" };
+
+const COLORS = {
+  finance: "#4f8cff", work: "#f5a524", personal: "#22c58b",
+  base: "#64748b", list: "#94a3b8", move: "#a78bfa", system: "#5b6b8c", word: "#ffffff",
+  agent: "#ef5f67", turn: "#f48a90", manager: "#7c5cff", subagent: "#22b8cf",
+};
+const LEGEND = [
+  ["base", "system prompt + tools + task"], ["list", "list_files output"], ["finance", "file body · finance"],
+  ["work", "file body · work"], ["personal", "file body · personal"], ["move", "move_file result"],
+  ["system", "subagent system prompt"], ["word", "one-word answer (output)"],
+];
+
+const DURATION = 10000; // the whole animation: 10 seconds
+const N = FILES.length;
+const TOTAL_CHARS = FILES.reduce((s, f) => s + f.chars, 0); // 2,854
+
+// ---------------------------------------------------------------------------
+// Token splits. Totals come from the logs; the per-node split is an estimate
+// that adds up exactly to those totals.
+//   flat:  4 turns, each turn resends everything before it
+//          4*BASE + 3*LIST + 2*READS + 14*MOVE = 11,928 input
+//   sub :  each call = its own system prompt (~90 tok) + file snippet (chars/4)
+//          14 calls = 1,976 input, 14 one-word answers = 56 output
+// ---------------------------------------------------------------------------
+const BASE = 2052, LIST = 140, READS = 1300, MOVE = 50;
+const FILE_TOK = FILES.map((f) => (READS * f.chars) / TOTAL_CHARS);
+const TURN_OUT = [60, 1400, 1700, 96]; // sums to 3,256
+const SUB_SYSTEM = (RUN.subagents.in - TOTAL_CHARS / 4) / N; // ≈ 90.2
+const SUB_WORD = RUN.subagents.out / N; // 4
+
+// ---------------------------------------------------------------------------
+// Event streams: each event adds one node to a tree at time t (ms).
+//   { t, id, parent, kind, tok, io: "in" | "out" | null, label, cat, tip }
+// The tree at time T = all events with e.t <= T.
+// ---------------------------------------------------------------------------
+function flatEvents() {
+  const ev = [{ t: 0, id: "agent", parent: null, kind: "agent", tok: 0, io: null, label: "Flat agent", tip: `${MODELS.flat} · one context` }];
+  const turn = (k, t) => {
+    ev.push({ t, id: `t${k}`, parent: "agent", kind: "turn", tok: TURN_OUT[k - 1], io: "out", label: `turn ${k}`, tip: `turn ${k}: request resends the whole context · ${TURN_OUT[k - 1]} output tok` });
+  };
+  const leaf = (k, t, key, kind, tok, tip, cat) =>
+    ev.push({ t, id: `t${k}-${key}`, parent: `t${k}`, kind, tok, io: "in", cat, tip: `turn ${k} · ${tip} · ${Math.round(tok)} tok` });
+  const files = (k, t0, step) => FILES.forEach((f, i) => leaf(k, t0 + i * step, `f${i}`, f.flat, FILE_TOK[i], f.name, f.flat));
+  const moves = (k, t0, step) => FILES.forEach((f, i) => leaf(k, t0 + i * step, `m${i}`, "move", MOVE, `move ${f.name} → ${f.flat}`));
+
+  turn(1, 150);  leaf(1, 300, "base", "base", BASE, "system + tools + task");
+  turn(2, 800);  leaf(2, 950, "base", "base", BASE, "system + tools + task (resent)");
+                 leaf(2, 1100, "list", "list", LIST, "list_files output");
+  turn(3, 1500); leaf(3, 1650, "base", "base", BASE, "resent");
+                 leaf(3, 1750, "list", "list", LIST, "resent");
+                 files(3, 1900, 190);                       // the 14 bodies arrive
+  turn(4, 4800); leaf(4, 4950, "base", "base", BASE, "resent");
+                 leaf(4, 5050, "list", "list", LIST, "resent");
+                 files(4, 5200, 140);                       // all 14 bodies resent
+                 moves(4, 7300, 175);                       // + 14 move results
+  return ev.sort((a, b) => a.t - b.t);
+}
+
+function subEvents() {
+  const ev = [
+    { t: 0, id: "mgr", parent: null, kind: "manager", tok: 0, io: null, label: "Manager", tip: `${MODELS.manager} · never reads a file` },
+    { t: 250, id: "mgr-list", parent: "mgr", kind: "list", tok: RUN.manager.in, io: "in", tip: `manager context: list_files only · ${RUN.manager.in} tok` },
+  ];
+  FILES.forEach((f, i) => {
+    const t = 600 + i * 660;
+    ev.push({ t, id: `s${i}`, parent: "mgr", kind: "subagent", tok: 0, io: null, label: `#${i + 1}`, doneAt: t + 420,
+      tip: `subagent #${i + 1} (${MODELS.subagent}) · fresh context for ${f.name}` });
+    ev.push({ t: t + 90, id: `s${i}-sys`, parent: `s${i}`, kind: "system", tok: SUB_SYSTEM, io: "in", tip: `own system prompt · ${Math.round(SUB_SYSTEM)} tok` });
+    ev.push({ t: t + 180, id: `s${i}-file`, parent: `s${i}`, kind: f.sub, tok: f.chars / 4, io: "in", cat: f.sub,
+      tip: `${f.name} · saw ${f.chars} chars · ${Math.round(f.chars / 4)} tok` });
+    ev.push({ t: t + 420, id: `s${i}-word`, parent: `s${i}`, kind: "word", tok: SUB_WORD, io: "out", cat: f.sub,
+      tip: `returns "${f.sub}" · ${SUB_WORD} output tok → manager moves file` });
+  });
+  return ev.sort((a, b) => a.t - b.t);
+}
+
+const FLAT_EVENTS = flatEvents();
+const SUB_EVENTS = subEvents();
+
+// ---------------------------------------------------------------------------
+// Token accounting at time T
+// ---------------------------------------------------------------------------
+function tokensAt(events, T) {
+  let input = 0, output = 0;
+  for (const e of events) {
+    if (e.t > T) break;
+    if (e.io === "in") input += e.tok;
+    else if (e.io === "out") output += e.tok;
+  }
+  return { input, output };
+}
+
+function ledgerAt(T) {
+  const f = tokensAt(FLAT_EVENTS, T);
+  const s = tokensAt(SUB_EVENTS, T);
+  const mgrIn = T >= 250 ? RUN.manager.in : 0;
+  const turns = FLAT_EVENTS.filter((e) => e.kind === "turn" && e.t <= T);
+  const lastTurn = turns.length ? turns[turns.length - 1].id : null;
+  const spawned = SUB_EVENTS.filter((e) => e.kind === "subagent" && e.t <= T).length;
+  return {
+    flat: {
+      in: f.input, out: f.output, turns: turns.length,
+      context: FLAT_EVENTS.filter((e) => e.parent === lastTurn && e.t <= T).reduce((a, e) => a + e.tok, 0),
+    },
+    sub: { in: s.input, out: s.output, managerIn: mgrIn, subagentsIn: s.input - mgrIn, managerContext: mgrIn, spawned },
+  };
+}
+
+// Pre-computed cumulative series for the token chart (one sample per 50 ms).
+const SERIES = (() => {
+  const pts = [];
+  for (let T = 0; T <= DURATION; T += 50) {
+    const l = ledgerAt(T);
+    pts.push({ T, flat: l.flat.in, sub: l.sub.in, mgr: l.sub.managerIn, flatOut: l.flat.out, subOut: l.sub.out });
+  }
+  return pts;
+})();
+
+const nodeRadius = (e) =>
+  e.kind === "agent" || e.kind === "manager" ? 13 : e.kind === "turn" ? 8 : e.kind === "subagent" ? 6.5 : Math.max(3, Math.sqrt(e.tok) * 0.5);
+
+// ===== src/components/Charts.jsx =====
+
+const fmtN = d3.format(",.0f");
+const C = { flat: "#ef5f67", sub: "#22b8cf", mgr: "#7c5cff" };
+
+// Number that tweens with a d3 transition
+function AnimatedNumber({ value, dur = 300 }) {
+  const ref = useRef(null);
+  const last = useRef(0);
+  useEffect(() => {
+    const from = last.current; last.current = value;
+    d3.select(ref.current).interrupt().transition().duration(dur)
+      .tween("text", () => { const i = d3.interpolateNumber(from, value); return (t) => { if (ref.current) ref.current.textContent = fmtN(i(t)); }; });
+  }, [value, dur]);
+  return <span ref={ref}>0</span>;
+}
+
+// Cumulative input tokens over the 10 s run, revealed up to `elapsed`
+function TokenTimeline({ elapsed }) {
+  const ref = useRef(null);
+  const W = 640, H = 300, M = { t: 18, r: 150, b: 34, l: 56 };
+  const x = d3.scaleLinear().domain([0, DURATION]).range([M.l, W - M.r]);
+  const y = d3.scaleLinear().domain([0, 12500]).range([H - M.b, M.t]);
+  const lines = [
+    { key: "flat", label: "flat agent", color: C.flat },
+    { key: "sub", label: "manager + subagents", color: C.sub },
+    { key: "mgr", label: "manager only", color: C.mgr },
+  ];
+
+  useEffect(() => {
+    const svg = d3.select(ref.current);
+    svg.selectAll("*").remove();
+    svg.append("defs").append("clipPath").attr("id", "tl-clip").append("rect").attr("x", 0).attr("y", 0).attr("height", H).attr("width", M.l);
+    svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - M.b})`)
+      .call(d3.axisBottom(x).ticks(10).tickFormat((d) => d / 1000 + "s"));
+    svg.append("g").attr("class", "axis").attr("transform", `translate(${M.l},0)`)
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format("~s")).tickSize(-(W - M.l - M.r)))
+      .call((g) => g.selectAll(".tick line").attr("stroke-opacity", 0.15));
+    svg.append("text").attr("class", "lbl-s").attr("transform", `translate(14,${H / 2}) rotate(-90)`).attr("text-anchor", "middle").text("cumulative input tokens");
+    const g = svg.append("g").attr("clip-path", "url(#tl-clip)");
+    for (const l of lines) {
+      const area = d3.area().x((d) => x(d.T)).y0(y(0)).y1((d) => y(d[l.key])).curve(d3.curveStepAfter);
+      const line = d3.line().x((d) => x(d.T)).y((d) => y(d[l.key])).curve(d3.curveStepAfter);
+      if (l.key !== "mgr") g.append("path").attr("d", area(SERIES)).attr("fill", l.color).attr("opacity", 0.12);
+      g.append("path").attr("d", line(SERIES)).attr("fill", "none").attr("stroke", l.color).attr("stroke-width", 2.4);
+    }
+    svg.append("line").attr("class", "cursor").attr("y1", M.t).attr("y2", H - M.b);
+    const tag = svg.selectAll("g.tag").data(lines).join("g").attr("class", "tag");
+    tag.append("circle").attr("r", 4).attr("fill", (d) => d.color);
+    tag.append("text").attr("x", 8).attr("y", 4).attr("fill", (d) => d.color);
+  }, []);
+
+  useEffect(() => {
+    const svg = d3.select(ref.current);
+    const cx = x(elapsed);
+    const p = SERIES[Math.min(SERIES.length - 1, Math.floor(elapsed / 50))];
+    svg.select("#tl-clip rect").attr("width", cx);
+    svg.select(".cursor").attr("x1", cx).attr("x2", cx);
+    // keep the three labels from overlapping
+    const ys = lines.map((l) => y(p[l.key]));
+    const order = [0, 1, 2].sort((a, b) => ys[b] - ys[a]); // bottom first
+    for (let k = 1; k < 3; k++) ys[order[k]] = Math.min(ys[order[k]], ys[order[k - 1]] - 13);
+    svg.selectAll("g.tag").attr("transform", (d, i) => `translate(${cx},${ys[i]})`)
+      .select("text").text((d) => `${d.label}: ${fmtN(p[d.key])}`);
+  }, [elapsed]);
+
+  return <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="viz" role="img" aria-label="Cumulative input tokens" />;
+}
+
+// Live bars: input and output tokens per solution
+function TokenBars({ elapsed }) {
+  const ref = useRef(null);
+  const W = 640, H = 300, LX = 190, RX = 560;
+  const x = d3.scaleLinear().domain([0, 12000]).range([LX, RX]);
+  const yOf = (i) => 30 + i * 40 + (i >= 3 ? 36 : 0);
+  const rows = (T) => {
+    const l = ledgerAt(T);
+    return [
+      { id: "fi", label: "flat agent", v: l.flat.in, c: C.flat },
+      { id: "si", label: "manager + subagents", v: l.sub.in, c: C.sub },
+      { id: "mi", label: "manager only", v: l.sub.managerIn, c: C.mgr },
+      { id: "fo", label: "flat agent", v: l.flat.out, c: C.flat },
+      { id: "so", label: "subagents (14 words)", v: l.sub.out, c: C.sub },
+    ];
+  };
+
+  useEffect(() => {
+    const svg = d3.select(ref.current);
+    svg.selectAll("*").remove();
+    svg.append("text").attr("class", "lbl-h").attr("x", 0).attr("y", 16).text("Input tokens");
+    svg.append("text").attr("class", "lbl-h").attr("x", 0).attr("y", yOf(3) - 12).text("Output tokens");
+    svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - 20})`).call(d3.axisBottom(x).ticks(6).tickFormat(d3.format("~s")));
+    const g = svg.selectAll("g.b").data(rows(0), (d) => d.id).join("g").attr("class", "b").attr("transform", (d, i) => `translate(0,${yOf(i)})`);
+    g.append("text").attr("class", "blabel").attr("x", LX - 10).attr("y", 18).attr("text-anchor", "end").text((d) => d.label);
+    g.append("rect").attr("class", "btrack").attr("x", LX).attr("width", RX - LX).attr("height", 26).attr("rx", 5);
+    g.append("rect").attr("class", "bfill").attr("x", LX).attr("height", 26).attr("rx", 5).attr("fill", (d) => d.c);
+    g.append("text").attr("class", "bval").attr("y", 18);
+  }, []);
+
+  useEffect(() => {
+    const g = d3.select(ref.current).selectAll("g.b").data(rows(elapsed), (d) => d.id);
+    g.select(".bfill").attr("width", (d) => (d.v ? Math.max(2, x(d.v) - LX) : 0));
+    g.select(".bval").attr("x", (d) => Math.max(LX + 2, x(d.v)) + 6).text((d) => fmtN(d.v));
+  }, [elapsed]);
+
+  return <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="viz" role="img" aria-label="Token bars" />;
+}
+
+
+// ===== src/components/ForceTree.jsx =====
+
+// Force-directed tree after https://observablehq.com/@d3/force-directed-tree
+// (link + many-body + x/y forces, drag), extended so nodes are added over time
+// and sized by tokens (area ∝ tokens).
+const W = 460, H = 420;
+
+const fillOf = (d) => COLORS[d.kind] ?? "#999";
+
+function ForceTree({ events, elapsed }) {
+  const ref = useRef(null);
+  const st = useRef({ nodes: [], byId: new Map(), sim: null });
+
+  // one-time setup: svg layers + simulation
+  useEffect(() => {
+    const svg = d3.select(ref.current).attr("viewBox", [-W / 2, -H / 2, W, H]);
+    svg.selectAll("*").remove();
+    svg.append("g").attr("class", "links");
+    svg.append("g").attr("class", "nodes");
+    svg.append("g").attr("class", "labels");
+
+    const sim = d3.forceSimulation()
+      .force("link", d3.forceLink().id((d) => d.id).distance((l) => l.source.r + l.target.r + 12).strength(1))
+      .force("charge", d3.forceManyBody().strength(-110))
+      .force("collide", d3.forceCollide((d) => d.r + 1.2))
+      .force("x", d3.forceX().strength(0.05))
+      .force("y", d3.forceY().strength(0.05))
+      .on("tick", () => {
+        const pad = 14;
+        for (const n of st.current.nodes) {
+          n.x = Math.max(-W / 2 + pad, Math.min(W / 2 - pad, n.x));
+          n.y = Math.max(-H / 2 + pad, Math.min(H / 2 - pad, n.y));
+        }
+        svg.select(".links").selectAll("line")
+          .attr("x1", (d) => d.source.x).attr("y1", (d) => d.source.y)
+          .attr("x2", (d) => d.target.x).attr("y2", (d) => d.target.y);
+        svg.select(".nodes").selectAll("circle").attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+        svg.select(".labels").selectAll("text").attr("x", (d) => d.x).attr("y", (d) => d.y - d.r - 4);
+      });
+    st.current.sim = sim;
+    return () => sim.stop();
+  }, []);
+
+  // grow the tree as time passes
+  useEffect(() => {
+    const s = st.current;
+    const svg = d3.select(ref.current);
+    const visible = events.filter((e) => e.t <= elapsed);
+
+    if (visible.length < s.nodes.length) { s.nodes = []; s.byId = new Map(); } // reset / replay
+
+    if (visible.length > s.nodes.length) {
+      for (const e of visible.slice(s.nodes.length)) {
+        const p = s.byId.get(e.parent);
+        const a = Math.random() * 2 * Math.PI;
+        const n = { ...e, r: nodeRadius(e), x: p ? p.x + Math.cos(a) * 12 : 0, y: p ? p.y + Math.sin(a) * 12 : 0 };
+        s.nodes.push(n); s.byId.set(n.id, n);
+      }
+      const links = s.nodes.filter((n) => n.parent).map((n) => ({ source: n.parent, target: n.id, kind: n.kind }));
+
+      s.sim.nodes(s.nodes);
+      s.sim.force("link").links(links);
+      s.sim.alpha(0.55).restart();
+
+      svg.select(".links").selectAll("line").data(links, (d) => d.target.id ?? d.target)
+        .join((en) => en.append("line").attr("stroke-opacity", 0).call((l) => l.transition().duration(400).attr("stroke-opacity", 0.55)));
+
+      svg.select(".nodes").selectAll("circle").data(s.nodes, (d) => d.id)
+        .join((en) => en.append("circle")
+          .attr("r", 0)
+          .attr("fill", fillOf)
+          .attr("stroke", (d) => (d.kind === "word" ? COLORS[d.cat] : d.children ? null : "#0b1020"))
+          .attr("stroke-width", (d) => (d.kind === "word" ? 2 : 1))
+          .call((c) => c.append("title").text((d) => d.tip))
+          .call(drag(s.sim))
+          .call((c) => c.transition().duration(500).ease(d3.easeBackOut.overshoot(2)).attr("r", (d) => d.r)));
+
+      svg.select(".labels").selectAll("text").data(s.nodes.filter((n) => n.label), (d) => d.id)
+        .join((en) => en.append("text").attr("text-anchor", "middle")
+          .attr("class", (d) => "nlabel nl-" + d.kind).text((d) => d.label)
+          .attr("opacity", 0).call((t) => t.transition().duration(400).attr("opacity", 1)));
+    }
+
+    // subagent that has answered: its context is discarded -> dim it and its leaves (not the word)
+    const done = new Set(s.nodes.filter((n) => n.doneAt != null && elapsed >= n.doneAt).map((n) => n.id));
+    svg.select(".nodes").selectAll("circle")
+      .attr("opacity", (d) => ((done.has(d.id) || (done.has(d.parent) && d.kind !== "word")) ? 0.28 : 1));
+    svg.select(".labels").selectAll("text").attr("opacity", (d) => (done.has(d.id) ? 0.35 : 1));
+  }, [elapsed, events]);
+
+  return <svg ref={ref} className="viz tree" role="img" aria-label="force-directed tree" />;
+}
+
+function drag(simulation) {
+  return d3.drag()
+    .on("start", (event) => { if (!event.active) simulation.alphaTarget(0.3).restart(); event.subject.fx = event.subject.x; event.subject.fy = event.subject.y; })
+    .on("drag", (event) => { event.subject.fx = event.x; event.subject.fy = event.y; })
+    .on("end", (event) => { if (!event.active) simulation.alphaTarget(0); event.subject.fx = null; event.subject.fy = null; });
+}
+
+// ===== src/App.jsx =====
+
+function Stat({ label, value, color }) {
+  return (
+    <div className="stat">
+      <div className="stat-v" style={{ color }}><AnimatedNumber value={Math.round(value)} /></div>
+      <div className="stat-l">{label}</div>
+    </div>
+  );
+}
+
+const ratio = (a, b) => (a / b).toFixed(1);
+
+function App() {
+  const [elapsed, setElapsed] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const timer = useRef(null);
+  const offset = useRef(0);
+
+  // 10-second clock driven by d3.timer
+  useEffect(() => {
+    if (!playing) return;
+    const start = offset.current;
+    timer.current = d3.timer((t) => {
+      const now = Math.min(DURATION, start + t);
+      offset.current = now;
+      setElapsed(now);
+      if (now >= DURATION) { timer.current.stop(); setPlaying(false); }
+    });
+    return () => timer.current && timer.current.stop();
+  }, [playing]);
+
+  const play = () => {
+    if (offset.current >= DURATION) { offset.current = 0; setElapsed(0); }
+    setPlaying(true);
+  };
+  const reset = () => { setPlaying(false); offset.current = 0; setElapsed(0); };
+
+  const l = ledgerAt(elapsed);
+  const done = elapsed >= DURATION;
+
+  return (
+    <div className="app">
+      <header>
+        <div className="eyebrow">SORTLY · P3 · Agent architecture · same 14 files</div>
+        <h1>Single agent <span className="vs">vs</span> manager + subagents</h1>
+        <p className="lede">
+          Two force-directed trees grow over 10 seconds. Node area is proportional to tokens.
+          The single agent resends its whole context on every turn, so its tree keeps duplicating the same file bodies.
+          The manager hands each file to a fresh subagent that returns one word, then is discarded (dimmed).
+        </p>
+      </header>
+
+      <div className="controls">
+        {playing
+          ? <button onClick={() => setPlaying(false)}>❚❚ Pause</button>
+          : <button className="primary" onClick={play}>▶ {elapsed === 0 ? "Play (10 s)" : done ? "Replay" : "Resume"}</button>}
+        <button onClick={reset}>↺ Reset</button>
+        <div className="progress"><div style={{ width: `${(100 * elapsed) / DURATION}%` }} /></div>
+        <span className="phase">{(elapsed / 1000).toFixed(1)} s / 10 s</span>
+      </div>
+
+      <section className="race">
+        <article className="card flat">
+          <div className="card-h">
+            <h2><span className="dot" style={{ background: COLORS.agent }} />Single agent</h2>
+            <span className="chip">{MODELS.flat}</span>
+          </div>
+          <ForceTree events={FLAT_EVENTS} elapsed={elapsed} />
+          <div className="stats">
+            <Stat label="input tokens" value={l.flat.in} color={COLORS.agent} />
+            <Stat label="output tokens" value={l.flat.out} />
+            <Stat label="context now" value={l.flat.context} />
+            <Stat label="turns" value={l.flat.turns} />
+          </div>
+        </article>
+
+        <article className="card sub">
+          <div className="card-h">
+            <h2><span className="dot" style={{ background: COLORS.subagent }} />Manager + subagents</h2>
+            <span className="chip">{MODELS.manager} → {MODELS.subagent}</span>
+          </div>
+          <ForceTree events={SUB_EVENTS} elapsed={elapsed} />
+          <div className="stats">
+            <Stat label="input tokens" value={l.sub.in} color={COLORS.subagent} />
+            <Stat label="output tokens" value={l.sub.out} />
+            <Stat label="manager context" value={l.sub.managerContext} color={COLORS.manager} />
+            <Stat label="subagents" value={l.sub.spawned} />
+          </div>
+        </article>
+      </section>
+
+      <div className="legend">
+        {LEGEND.map(([k, txt]) => (
+          <span key={k}><i style={{ background: COLORS[k], outline: k === "word" ? "2px solid #22c58b" : "none" }} />{txt}</span>
+        ))}
+        <span className="hint">Drag nodes · hover for tokens</span>
+      </div>
+
+      <section className="grid2">
+        <article className="card">
+          <div className="card-h"><h2>Token consumption over time</h2><span className="chip">cumulative input</span></div>
+          <TokenTimeline elapsed={elapsed} />
+        </article>
+        <article className="card">
+          <div className="card-h"><h2>Single agent vs subagents</h2><span className="chip">lands on logged totals</span></div>
+          <TokenBars elapsed={elapsed} />
+        </article>
+      </section>
+
+      <section className={`card summary ${done ? "lit" : ""}`}>
+        <table className="ledger">
+          <thead><tr><th>from the run logs</th><th>turns</th><th>tools</th><th>input</th><th>output</th></tr></thead>
+          <tbody>
+            <tr><td>single agent</td><td>{RUN.flat.turns}</td><td>{RUN.flat.tools}</td><td>11,928</td><td>3,256</td></tr>
+            <tr><td>manager context</td><td>{RUN.manager.turns}</td><td>{RUN.manager.tools}</td><td>86</td><td>0</td></tr>
+            <tr><td>subagents (total)</td><td>{RUN.subagents.turns}</td><td>{RUN.subagents.tools}</td><td>1,976</td><td>56</td></tr>
+          </tbody>
+        </table>
+        <div className="kpi-row">
+          <div className="kpi"><b>{ratio(RUN.flat.in, RUN.manager.in)}×</b><span>smaller manager context (11,928 → 86)</span></div>
+          <div className="kpi"><b>{ratio(RUN.flat.in, RUN.manager.in + RUN.subagents.in)}×</b><span>fewer input tokens in total (11,928 → 2,062)</span></div>
+          <div className="kpi"><b>{ratio(RUN.flat.out, RUN.subagents.out)}×</b><span>fewer output tokens (3,256 → 56)</span></div>
+        </div>
+        <p className="note">
+          Delegation is not automatically cheaper: each subagent resends its own system prompt (~{Math.round(SUB_SYSTEM)} of its ~141 input tokens).
+          What it buys is a manager context that does not grow with the job. Totals are from <code>single-agent-run.txt</code> and <code>subagent-run.txt</code>;
+          the per-node split is an estimate that sums exactly to them.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
